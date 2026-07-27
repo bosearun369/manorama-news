@@ -12,6 +12,7 @@
             --header-bg: #0055a5;
             --border-color: #ddd;
             --link-color: #0055a5;
+            --focus-bg: #e6f2ff;
         }
         [data-theme="dark"] {
             --bg-color: #121212;
@@ -20,22 +21,32 @@
             --header-bg: #1a1a1a;
             --border-color: #333;
             --link-color: #66b2ff;
+            --focus-bg: #2a2a2a;
         }
         body { font-family: Arial, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 10px; }
-        .container { max-width: 700px; margin: 0 auto; background: var(--container-bg); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); overflow: hidden; }
+        .container { max-width: 700px; margin: 0 auto; background: var(--container-bg); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); overflow: hidden; padding-bottom: 20px;}
         .header { background: var(--header-bg); color: white; padding: 15px; text-align: center; font-size: 1.2em; font-weight: bold; }
         .controls { display: flex; gap: 10px; padding: 15px; border-bottom: 2px solid var(--border-color); }
         select, button { padding: 10px; border: 1px solid var(--border-color); border-radius: 5px; background: var(--bg-color); color: var(--text-color); cursor: pointer; }
         select { flex-grow: 1; font-size: 1em; }
         .news-item { border-bottom: 1px solid var(--border-color); padding: 0; }
-        .news-title { padding: 15px; font-size: 1.1em; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; line-height: 1.4; }
-        .news-title:hover { background: rgba(0,0,0,0.03); }
-        .news-title::after { content: '▼'; font-size: 0.8em; color: gray; margin-left: 10px; }
-        .news-title.active::after { content: '▲'; }
+        
+        .news-title { 
+            padding: 20px 15px; 
+            font-size: 1.15em; 
+            font-weight: bold; 
+            cursor: pointer; 
+            line-height: 1.5;
+            outline: none; /* Removes default box, we add custom highlight on focus */
+        }
+        .news-title:hover, .news-title:focus { 
+            background: var(--focus-bg); 
+        }
+        
         .news-content { display: none; padding: 0 15px 15px 15px; line-height: 1.8; font-size: 1.05em; }
         .news-content p { margin-top: 10px; margin-bottom: 0; }
         .original-link { display: inline-block; margin-top: 15px; color: white; background: var(--link-color); padding: 10px 15px; border-radius: 5px; text-decoration: none; font-weight: bold; font-size: 0.9em; text-align: center; }
-        .refresh-btn { display: block; width: 90%; margin: 20px auto; padding: 12px; background: var(--header-bg); color: white; text-align: center; font-size: 1.1em; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #loading-indicator { text-align: center; padding: 20px; display: none; font-weight: bold; color: gray; }
     </style>
 </head>
 <body>
@@ -48,66 +59,124 @@
                 <option value="sports">സ്പോർട്സ് (Sports)</option>
                 <option value="movies">സിനിമ (Movies)</option>
             </select>
-            <button onclick="toggleDarkMode()">🌙</button>
+            <button onclick="toggleDarkMode()" title="Dark Mode">🌙</button>
+            <button onclick="loadNews()" title="Refresh News">🔄</button>
         </div>
-        <div id="news-list"></div>
         
-        <!-- The new refresh button placed at the bottom -->
-        <button class="refresh-btn" onclick="loadNews()">🔄 പുതിയ വാർത്തകൾ പരിശോധിക്കുക (Refresh News)</button>
+        <div id="news-list"></div>
+        <div id="loading-indicator">കൂടുതൽ വാർത്തകൾ ലോഡ് ചെയ്യുന്നു... (Loading more...)</div>
     </div>
 
     <script>
         let allNews = [];
+        let filteredNews = [];
+        let currentIndex = 0;
+        const batchSize = 10; // How many items load per scroll
+
         function toggleDarkMode() { document.body.toggleAttribute('data-theme'); }
         
         async function loadNews() {
-            const btn = document.querySelector('.refresh-btn');
-            btn.innerHTML = '🔄 ലോഡ് ചെയ്യുന്നു... (Loading...)';
+            const list = document.getElementById('news-list');
+            list.innerHTML = '<div style="padding:20px;text-align:center;">ലോഡ് ചെയ്യുന്നു... (Loading...)</div>';
             try {
                 const res = await fetch('news.json?cb=' + Date.now());
                 allNews = await res.json();
                 filterNews();
-                btn.innerHTML = '🔄 പുതിയ വാർത്തകൾ പരിശോധിക്കുക (Refresh News)';
             } catch (e) {
-                document.getElementById('news-list').innerHTML = '<div style="padding:20px;text-align:center;">Error loading news.</div>';
+                list.innerHTML = '<div style="padding:20px;text-align:center;">Error loading news.</div>';
             }
         }
 
         function filterNews() {
-            const list = document.getElementById('news-list');
             const cat = document.getElementById('categorySelect').value;
-            let filtered = cat === 'all' ? allNews : allNews.filter(i => i.category === cat);
+            filteredNews = cat === 'all' ? allNews : allNews.filter(i => i.category === cat);
             
-            list.innerHTML = '';
-            filtered.forEach(item => {
+            document.getElementById('news-list').innerHTML = '';
+            currentIndex = 0;
+            renderNextBatch();
+        }
+
+        function renderNextBatch() {
+            if (currentIndex >= filteredNews.length) return;
+
+            const list = document.getElementById('news-list');
+            const nextBatch = filteredNews.slice(currentIndex, currentIndex + batchSize);
+            
+            nextBatch.forEach((item) => {
                 const div = document.createElement('div');
                 div.className = 'news-item';
                 
                 const title = document.createElement('div');
                 title.className = 'news-title';
-                title.innerHTML = `<span>${item.title}</span>`;
+                title.tabIndex = 0; // Makes it focusable with Up/Down arrows
+                title.innerHTML = item.title;
                 
                 const content = document.createElement('div');
                 content.className = 'news-content';
                 content.innerHTML = item.fullTextHTML + `<br><a class="original-link" href="${item.link}" target="_blank">മനോരമയിൽ പൂർണ്ണരൂപം വായിക്കുക</a>`;
                 
-                // JavaScript to handle the smooth expanding effect
-                title.onclick = () => {
+                // Toggle expansion on click, double-click, and Enter
+                const toggleContent = () => {
                     const isVisible = content.style.display === 'block';
                     document.querySelectorAll('.news-content').forEach(c => c.style.display = 'none');
-                    document.querySelectorAll('.news-title').forEach(t => t.classList.remove('active'));
-                    
                     if (!isVisible) {
                         content.style.display = 'block';
-                        title.classList.add('active');
+                        // Auto-scroll so the heading is perfectly visible
+                        title.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }
                 };
+
+                title.addEventListener('click', toggleContent);
+                title.addEventListener('dblclick', toggleContent);
                 
                 div.appendChild(title);
                 div.appendChild(content);
                 list.appendChild(div);
             });
+            
+            currentIndex += batchSize;
+            
+            if (currentIndex >= filteredNews.length) {
+                document.getElementById('loading-indicator').style.display = 'none';
+            }
         }
+
+        // Arrow Key & Enter Navigation
+        document.addEventListener('keydown', (e) => {
+            const active = document.activeElement;
+            const titles = Array.from(document.querySelectorAll('.news-title'));
+            const activeIndex = titles.indexOf(active);
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (activeIndex >= 0 && activeIndex < titles.length - 1) {
+                    titles[activeIndex + 1].focus();
+                } else if (titles.length > 0) {
+                    titles[0].focus();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (activeIndex > 0) {
+                    titles[activeIndex - 1].focus();
+                }
+            } else if (e.key === 'Enter') {
+                if (active && active.classList.contains('news-title')) {
+                    e.preventDefault();
+                    active.click();
+                }
+            }
+        });
+
+        // Infinity Scroll triggers when near the bottom
+        window.addEventListener('scroll', () => {
+            const scrollPos = window.scrollY + window.innerHeight;
+            const docHeight = document.body.offsetHeight;
+            if (scrollPos >= docHeight - 200) {
+                document.getElementById('loading-indicator').style.display = 'block';
+                setTimeout(renderNextBatch, 200); // Tiny delay for a smooth visual feel
+            }
+        });
+
         window.onload = loadNews;
     </script>
 </body>
