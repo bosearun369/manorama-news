@@ -38,30 +38,30 @@ async function fetchNews() {
 
                         let fullText = "<p>പൂർണ്ണരൂപം വായിക്കാൻ താഴെയുള്ള ലിങ്കിൽ ക്ലിക്ക് ചെയ്യുക.</p>";
                         try {
-                            // Step 1: Follow Google's redirect to get the REAL Manorama URL
+                            // Step 1: Follow Google's link to find the true Manorama URL
                             const googleRes = await fetch(link);
                             const googleHtml = await googleRes.text();
                             
-                            const realUrlMatch = googleHtml.match(/<a[^>]*href="([^"]+)"/i);
-                            if (realUrlMatch && realUrlMatch[1].includes('manoramaonline')) {
-                                link = realUrlMatch[1]; // We found the real URL!
+                            const realUrlMatch = googleHtml.match(/(https?:\/\/[^"']*manoramaonline\.com[^"']*)/i);
+                            if (realUrlMatch) {
+                                link = realUrlMatch[1]; 
                             }
 
-                            // Step 2: Fetch the actual Manorama Article as a "Browser"
+                            // Step 2: Fetch the Manorama Article
                             const articleRes = await fetch(link, {
                                 headers: { 
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' 
                                 }
                             });
                             const articleHtml = await articleRes.text();
                             
                             if (articleHtml) {
-                                // Extract the Malayalam paragraphs
-                                const pMatches = articleHtml.match(/<p[^>]*>(.*?)<\/p>/g);
+                                // The "gs" at the end of this line is the magic fix that allows reading across line breaks!
+                                const pMatches = articleHtml.match(/<p[^>]*>(.*?)<\/p>/gs);
                                 if (pMatches) {
                                     const cleanParagraphs = pMatches
                                         .map(p => p.replace(/<[^>]+>/g, '').trim())
-                                        .filter(p => p.length > 50 && !p.includes('Read More') && !p.includes('Also Read'));
+                                        .filter(p => p.length > 60 && !p.includes('Read More') && !p.includes('Also Read'));
                                         
                                     if (cleanParagraphs.length > 0) {
                                         fullText = cleanParagraphs.map(p => `<p>${p}</p>`).join('');
