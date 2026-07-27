@@ -13,14 +13,16 @@ async function fetchNews() {
 
     for (let cat of categories) {
         try {
+            console.log(`Fetching category: ${cat.name}...`);
             const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cat.query)}&hl=ml&gl=IN&ceid=IN:ml`;
-            const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(feedUrl)}`);
-            const data = await response.json();
             
-            if (!data.contents) continue;
+            // Fetch directly from Google News — no proxy needed!
+            const response = await fetch(feedUrl);
+            const xmlText = await response.text();
+            
+            if (!xmlText) continue;
 
-            // Simple XML Parsing for Node.js
-            const items = data.contents.split('<item>');
+            const items = xmlText.split('<item>');
             for (let i = 1; i < items.length; i++) {
                 const itemStr = items[i];
                 
@@ -36,13 +38,14 @@ async function fetchNews() {
                     if (!seenTitles.has(snippet) && cleanTitle.length > 5) {
                         seenTitles.add(snippet);
 
-                        // Fetch full article content safely on backend
                         let fullText = "<p>പൂർണ്ണരൂപം വായിക്കാൻ താഴെയുള്ള ലിങ്കിൽ ക്ലിക്ക് ചെയ്യുക.</p>";
                         try {
-                            const articleRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(link)}`);
-                            const articleData = await articleRes.json();
-                            if (articleData.contents) {
-                                const pMatches = articleData.contents.match(/<p[^>]*>(.*?)<\/p>/g);
+                            // Fetch the full article directly
+                            const articleRes = await fetch(link);
+                            const articleHtml = await articleRes.text();
+                            
+                            if (articleHtml) {
+                                const pMatches = articleHtml.match(/<p[^>]*>(.*?)<\/p>/g);
                                 if (pMatches) {
                                     const cleanParagraphs = pMatches
                                         .map(p => p.replace(/<[^>]+>/g, '').trim())
