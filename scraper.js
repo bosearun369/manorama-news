@@ -16,10 +16,8 @@ async function fetchNews() {
             console.log(`Fetching category: ${cat.name}...`);
             const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cat.query)}&hl=ml&gl=IN&ceid=IN:ml`;
             
-            // Fetch directly from Google News — no proxy needed!
             const response = await fetch(feedUrl);
             const xmlText = await response.text();
-            
             if (!xmlText) continue;
 
             const items = xmlText.split('<item>');
@@ -40,16 +38,31 @@ async function fetchNews() {
 
                         let fullText = "<p>പൂർണ്ണരൂപം വായിക്കാൻ താഴെയുള്ള ലിങ്കിൽ ക്ലിക്ക് ചെയ്യുക.</p>";
                         try {
-                            // Fetch the full article directly
-                            const articleRes = await fetch(link);
+                            // Step 1: Follow Google's redirect to get the REAL Manorama URL
+                            const googleRes = await fetch(link);
+                            const googleHtml = await googleRes.text();
+                            
+                            const realUrlMatch = googleHtml.match(/<a[^>]*href="([^"]+)"/i);
+                            if (realUrlMatch && realUrlMatch[1].includes('manoramaonline')) {
+                                link = realUrlMatch[1]; // We found the real URL!
+                            }
+
+                            // Step 2: Fetch the actual Manorama Article as a "Browser"
+                            const articleRes = await fetch(link, {
+                                headers: { 
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
+                                }
+                            });
                             const articleHtml = await articleRes.text();
                             
                             if (articleHtml) {
+                                // Extract the Malayalam paragraphs
                                 const pMatches = articleHtml.match(/<p[^>]*>(.*?)<\/p>/g);
                                 if (pMatches) {
                                     const cleanParagraphs = pMatches
                                         .map(p => p.replace(/<[^>]+>/g, '').trim())
-                                        .filter(p => p.length > 40);
+                                        .filter(p => p.length > 50 && !p.includes('Read More') && !p.includes('Also Read'));
+                                        
                                     if (cleanParagraphs.length > 0) {
                                         fullText = cleanParagraphs.map(p => `<p>${p}</p>`).join('');
                                     }
