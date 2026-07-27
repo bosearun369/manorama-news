@@ -5,17 +5,23 @@ on:
     - cron: '0 * * * *' # Runs automatically every 1 hour
   workflow_dispatch: # Allows manual trigger
 
+# This permission block fixes the "Exit Code 128" push error
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        # Updated to v4 to fix the Node 20 deprecation warning
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        # Updated to v4 to fix the Node 20 deprecation warning
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20' # Upgraded to a newer Node version for stability
 
       - name: Run news scraper
         run: node scraper.js
