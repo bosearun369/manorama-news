@@ -10,13 +10,16 @@ async function fetchNews() {
 
     let allArticles = [];
     let seenTitles = new Set();
+    
+    // We use a fake browser ID so Google and Manorama don't immediately block us as a bot
+    const fakeBrowser = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
 
     for (let cat of categories) {
         try {
             console.log(`Fetching category: ${cat.name}...`);
             const feedUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cat.query)}&hl=ml&gl=IN&ceid=IN:ml`;
             
-            const response = await fetch(feedUrl);
+            const response = await fetch(feedUrl, { headers: fakeBrowser });
             const xmlText = await response.text();
             if (!xmlText) continue;
 
@@ -38,33 +41,39 @@ async function fetchNews() {
 
                         let fullText = "<p>പൂർണ്ണരൂപം വായിക്കാൻ താഴെയുള്ള ലിങ്കിൽ ക്ലിക്ക് ചെയ്യുക.</p>";
                         try {
-                            // Step 1: Follow Google's link to find the true Manorama URL
-                            const googleRes = await fetch(link);
-                            const googleHtml = await googleRes.text();
+                            // Step 1: Follow Google's link as a "browser"
+                            const googleRes = await fetch(link, { headers: fakeBrowser });
+                            let realManoramaUrl = googleRes.url; 
                             
-                            const realUrlMatch = googleHtml.match(/(https?:\/\/[^"']*manoramaonline\.com[^"']*)/i);
-                            if (realUrlMatch) {
-                                link = realUrlMatch[1]; 
+                            // If Google trapped us in a redirect page, rip the real URL out of the HTML
+                            if (realManoramaUrl.includes('news.google.com')) {
+                                const googleHtml = await googleRes.text();
+                                const realUrlMatch = googleHtml.match(/(https?:\/\/[^"']*manoramaonline\.com[^"']*)/i);
+                                if (realUrlMatch) {
+                                    // Fix encoded characters like &amp; -> &
+                                    realManoramaUrl = realUrlMatch[1].replace(/&amp;/g, '&'); 
+                                }
                             }
 
-                            // Step 2: Fetch the Manorama Article
-                            const articleRes = await fetch(link, {
-                                headers: { 
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' 
-                                }
-                            });
-                            const articleHtml = await articleRes.text();
+                            // Step 2: Use the Proxy to bypass Manorama's bot blocker
+                            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(realManoramaUrl)}`;
+                            const articleRes = await fetch(proxyUrl);
                             
-                            if (articleHtml) {
-                                // The "gs" at the end of this line is the magic fix that allows reading across line breaks!
-                                const pMatches = articleHtml.match(/<p[^>]*>(.*?)<\/p>/gs);
-                                if (pMatches) {
-                                    const cleanParagraphs = pMatches
-                                        .map(p => p.replace(/<[^>]+>/g, '').trim())
-                                        .filter(p => p.length > 60 && !p.includes('Read More') && !p.includes('Also Read'));
-                                        
-                                    if (cleanParagraphs.length > 0) {
-                                        fullText = cleanParagraphs.map(p => `<p>${p}</p>`).join('');
+                            // Make sure the proxy actually responded properly
+                            if (articleRes.ok) {
+                                const articleJson = await articleRes.json();
+                                const articleHtml = articleJson.contents; 
+                                
+                                if (articleHtml) {
+                                    const pMatches = articleHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/g);
+                                    if (pMatches) {
+                                        const cleanParagraphs = pMatches
+                                            .map(p => p.replace(/<[^>]+>/g, '').trim())
+                                            .filter(p => p.length > 60 && !p.includes('Read More') && !p.includes('Also Read'));
+                                            
+                                        if (cleanParagraphs.length > 0) {
+                                            fullText = cleanParagraphs.map(p => `<p>${p}</p>`).join('');
+                                        }
                                     }
                                 }
                             }
@@ -74,7 +83,7 @@ async function fetchNews() {
 
                         allArticles.push({
                             title: cleanTitle,
-                            link: link,
+                            link: realManoramaUrl || link, // Save the clean link for your frontend button
                             category: cat.name,
                             fullTextHTML: fullText
                         });
